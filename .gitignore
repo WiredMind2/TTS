@@ -1,2 +1,4 @@
 tortoise-tts
 config.json
+*.wav
+__pycache__

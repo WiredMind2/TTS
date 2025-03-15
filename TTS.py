@@ -1,7 +1,9 @@
 
+import io
 import platform
 
 import json
+from urllib.parse import urljoin
 if platform.system() == "Windows":
 	import requests
 
@@ -14,7 +16,8 @@ elif platform.system() == "Linux":
 	import torch.nn.functional as F
 
 	from tortoise.api import TextToSpeech
-	from tortoise.utils.audio import load_audio, load_voice, load_voices
+	from tortoise.utils.audio import load_voice
+	from tortoise.utils.text import split_and_recombine_text
 
 CONFIG_FILE = "config.json"
 
@@ -44,21 +47,37 @@ def start_server():
 			post_data = json.loads(post_data)
 			text = post_data["text"]
 
-			gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset)
-			torchaudio.save('generated.wav', gen.squeeze(0).cpu(), 24000)
+
+			preset = "standard"
+			if self.path != "/":
+				keys = ('ultra_fast', 'fast', 'standard', 'high_quality')
+				if self.path[1:] in keys:
+					preset = self.path[1:]
+
+
+			audio_parts = []
+			texts = split_and_recombine_text(text, desired_length=250, max_length=300)
+			for text in texts:
+				gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset)
+				audio = gen.squeeze(0).cpu()
+				audio_parts.append(audio)
+
+			audio = torch.cat(audio_parts, dim=-1)
+
+			tmpf = io.BytesIO()
+			torchaudio.save(tmpf, audio, 24000)
+			tmpf.seek(0)
 
 			self.send_response(200)
 			self.send_header('Content-type', 'audio/wav')
 			self.end_headers()
 
-			with open('generated.wav', 'rb') as f:
-				self.wfile.write(f.read())
+			self.wfile.write(tmpf.read())
 
 	tts = TextToSpeech(use_deepspeed=False, kv_cache=True, half=True)
-	preset = "standard"
 	voice = 'train_empire'
 	voice_samples, conditioning_latents = load_voice(voice)
- 
+
 	server_address = ('', 8090)
 	httpd = HTTPServer(server_address, Server)
 	print('Starting server...')
@@ -67,16 +86,18 @@ def start_server():
 
 def get_speech_remote(text):
 	config = get_config()
-	fp = 'generated.wav'
+	fp = io.BytesIO()
 	try:
-		r = requests.post(config["server_url"], json={"text": text})
+		base_url = config["server_url"]
+		url = urljoin(base_url, "/ultra_fast")
+		r = requests.post(url, json={"text": text})
 		r.raise_for_status()
 	except requests.exceptions.RequestException as e:
 		print(f'Error: {e}')
 		return None
 	else:
-		with open(fp, 'wb') as f:
-			f.write(r.content)
+		fp.write(r.content)
+		fp.seek(0)
 
 	return fp
 
