@@ -65,7 +65,7 @@ def start_server():
 			audio = torch.cat(audio_parts, dim=-1)
 
 			tmpf = io.BytesIO()
-			torchaudio.save(tmpf, audio, 24000)
+			torchaudio.save(tmpf, audio, 24000, format="wav")
 			tmpf.seek(0)
 
 			self.send_response(200)
