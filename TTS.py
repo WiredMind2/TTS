@@ -58,6 +58,7 @@ def start_server():
 			audio_parts = []
 			texts = split_and_recombine_text(text, desired_length=250, max_length=300)
 			for text in texts:
+				print(text)
 				gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset)
 				audio = gen.squeeze(0).cpu()
 				audio_parts.append(audio)
