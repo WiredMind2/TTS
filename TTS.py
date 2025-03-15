@@ -48,7 +48,7 @@ class Server(BaseHTTPRequestHandler):
 			self.wfile.write(f.read())
 
 def start_server():
-	server_address = ('', 8000)
+	server_address = ('', 8090)
 	httpd = HTTPServer(server_address, Server)
 	print('Starting server...')
 	httpd.serve_forever()
