@@ -45,7 +45,7 @@ def get_config():
 
 
 def TTS_worker(que):
-	tts = TextToSpeech(use_deepspeed=False, kv_cache=True, half=True)
+	tts = TextToSpeech(use_deepspeed=True, kv_cache=True, half=True)
 	voice = 'train_empire'
 	voice_samples, conditioning_latents = load_voice(voice)
 
