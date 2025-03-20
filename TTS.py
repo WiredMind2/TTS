@@ -87,12 +87,14 @@ def start_server():
 	httpd.serve_forever()
 
 
-def get_speech_remote(text):
+def get_speech_remote(text, preset=None):
+	if preset is None:
+		preset = ""
 	config = get_config()
 	fp = io.BytesIO()
 	try:
 		base_url = config["server_url"]
-		url = urljoin(base_url, "/ultra_fast")
+		url = urljoin(base_url, f"/{preset}")
 		r = requests.post(url, json={"text": text})
 		r.raise_for_status()
 	except requests.exceptions.RequestException as e:
