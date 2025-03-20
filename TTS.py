@@ -3,6 +3,7 @@ import io
 import platform
 
 import json
+import time
 from urllib.parse import urljoin
 if platform.system() == "Windows":
 	import requests
@@ -54,12 +55,13 @@ def start_server():
 				if self.path[1:] in keys:
 					preset = self.path[1:]
 
+			seed = int(time.time())
 
 			audio_parts = []
-			texts = split_and_recombine_text(text, desired_length=250, max_length=300)
+			texts = split_and_recombine_text(text)
 			for text in texts:
 				print(text)
-				gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset)
+				gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset, use_deterministic_seed=seed)
 				audio = gen.squeeze(0).cpu()
 				audio_parts.append(audio)
 
