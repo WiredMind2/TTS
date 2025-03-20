@@ -1,5 +1,6 @@
 
 import io
+import multiprocessing
 import os
 import platform
 
@@ -48,58 +49,69 @@ def TTS_worker(que):
 	voice = 'train_empire'
 	voice_samples, conditioning_latents = load_voice(voice)
 
-	while True:
-		try:
-			data = que.get()
+	# cpu_count = os.cpu_count()
+	cpu_count = 0
+	with multiprocessing.Pool(cpu_count) as pool:
+		while True:
+			try:
+				data = que.get()
 
-			post_data, preset, tmpf, ready_event = data
-		
-			text = post_data["text"]
-			post_id = post_data["id"]
+				post_data, preset, tmpf, ready_event = data
+			
+				text = post_data["text"]
+				post_id = post_data["id"]
 
-			root = os.path.join(os.path.dirname(__file__), post_id)
-			meta_path = os.path.join(root, "meta.json")
-			if os.path.exists(root) and os.path.exists(meta_path):
-				with open(meta_path, "r") as f:
-					meta = json.load(f)
-					old_preset = meta.get("preset", None)
-					old_index = PRESETS.index(old_preset) if old_preset is not None else -1
-					if old_index < PRESETS.index(preset):
-						# cache is of lower quality
-						for f in os.listdir(root):
-							os.remove(os.path.join(root, f))
+				root = os.path.join(os.path.dirname(__file__), post_id)
+				meta_path = os.path.join(root, "meta.json")
+				if os.path.exists(root) and os.path.exists(meta_path):
+					with open(meta_path, "r") as f:
+						meta = json.load(f)
+						old_preset = meta.get("preset", None)
+						old_index = PRESETS.index(old_preset) if old_preset is not None else -1
+						if old_index < PRESETS.index(preset):
+							# cache is of lower quality
+							for f in os.listdir(root):
+								os.remove(os.path.join(root, f))
 
-			os.makedirs(root, exist_ok=True)
-			with open(meta_path, "w") as f:
-				json.dump({"preset": preset}, f)
+				os.makedirs(root, exist_ok=True)
+				with open(meta_path, "w") as f:
+					json.dump({"preset": preset}, f)
 
-			audio_parts = []
-			texts = split_and_recombine_text(text)
-			for i, text in enumerate(texts):
-				fp = os.path.join(root, f'{i}.wav')
+				audio_parts = {}
+				texts = split_and_recombine_text(text)
 
-				if os.path.exists(fp):
-					# use cached audio
-					audio_parts.append(load_audio(fp, 24000))
-					continue
+				task_worker = lambda i=i, text=text: i, tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset, use_deterministic_seed=post_id)
+				tasks = []
+				for i, text in enumerate(texts):
+					fp = os.path.join(root, f'{i}.wav')
 
-				print(f'Generating part {i+1}/{len(texts)}:\n{text}')
-				gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents, preset=preset, use_deterministic_seed=post_id)
-				audio = gen.squeeze(0).cpu()
-				audio_parts.append(audio)
+					if os.path.exists(fp):
+						# use cached audio
+						audio_parts[i] = load_audio(fp, 24000)
+						continue
 
-				torchaudio.save(fp, audio, 24000)
+					print(f'Generating part {i+1}/{len(texts)}:\n{text}')
+					tasks.append((i, text))
 
-			audio = torch.cat(audio_parts, dim=-1)
+				# for i, gen in pool.starmap(task_worker, tasks):
+				for i, gen in [task_worker(i, text) for i, text in tasks]:
+					audio = gen.squeeze(0).cpu()
+					audio_parts[i] = audio
 
-			torchaudio.save(tmpf, audio, 24000, format="wav")
-			tmpf.seek(0)
-			ready_event.set()
+					fp = os.path.join(root, f'{i}.wav')
 
-		except Exception as e:
-			print(f"Error on TTS worker: {e}")
-			traceback.print_exc()
-			ready_event.set()
+					torchaudio.save(fp, audio, 24000)
+
+				audio = torch.cat(audio_parts, dim=-1)
+
+				torchaudio.save(tmpf, audio, 24000, format="wav")
+				tmpf.seek(0)
+				ready_event.set()
+
+			except Exception as e:
+				print(f"Error on TTS worker: {e}")
+				traceback.print_exc()
+				ready_event.set()
 
 class Server(BaseHTTPRequestHandler):
 	que = None
